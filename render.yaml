@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: telegram-music-bot
+    env: docker
+    plan: free
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: BOT_TOKEN
+        sync: false

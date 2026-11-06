@@ -1,0 +1,14 @@
+# Muhit va maxfiy ma'lumotlar
+.env
+__pycache__/
+*.pyc
+
+# Yuklab olingan vaqtinchalik musiqalar
+downloads/
+*.mp3
+*.m4a
+*.webm
+
+# Virtual muhit
+venv/
+.venv/
