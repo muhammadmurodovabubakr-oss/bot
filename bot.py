@@ -12,8 +12,10 @@ import config
 import music_service
 import keyboards
 
-# Loglarni sozlash
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 bot = Bot(
@@ -44,9 +46,9 @@ async def cmd_help(message: types.Message):
     text = (
         "💡 <b>Botdan qanday foydalaniladi?</b>\n\n"
         "1. Menga istalgan qo'shiq yoki san'atkor nomini yuboring.\n"
-        "2. Bot sizga eng mos 5 ta variantni chiqarib beradi.\n"
+        "2. Bot sizga eng sara 5 ta variantni chiqarib beradi.\n"
         "3. Raqamli tugmalardan (1️⃣, 2️⃣, 3️⃣...) birini bosing.\n"
-        "4. Bot musiqani MP3 holatida tayyorlab, sizga yuboradi!\n\n"
+        "4. Bot musiqani MP3 formatida sizga yuboradi!\n\n"
         "Shuningdek, YouTube havolasini yuborsangiz ham to'g'ridan-to'g'ri MP3 yuklab beradi."
     )
     await message.answer(text)
@@ -60,27 +62,33 @@ async def handle_music_query(message: types.Message):
     # 1. Agar YouTube link bo'lsa
     yt_id = music_service.extract_youtube_id(query)
     if yt_id:
-        status_msg = await message.answer("⏳ <b>Musiqa yuklab olinmoqda...</b> Iltimos, kuting.")
+        status_msg = await message.answer("⏳ <b>Musiqa yuklanmoqda...</b>")
+        file_path = None
         try:
             track = await music_service.async_download_audio(yt_id)
-            audio_file = FSInputFile(track['file_path'])
-            await message.answer_audio(
-                audio=audio_file,
-                title=track['title'],
-                performer=track['uploader'],
-                duration=track['duration'],
-                caption="🎶 <b>@cheater_000bot</b> orqali yuklab olindi"
-            )
-            await status_msg.delete()
-            # Diskni toza saqlash uchun yuklangan faylni o'chiramiz
-            if os.path.exists(track['file_path']):
+            file_path = track.get('file_path')
+            
+            if file_path and os.path.exists(file_path):
+                audio_file = FSInputFile(file_path)
+                await message.answer_audio(
+                    audio=audio_file,
+                    title=track.get('title', 'Musiqa'),
+                    performer=track.get('uploader', "Ijrochi"),
+                    duration=track.get('duration', 0),
+                    caption="🎶 <b>@cheater_000bot</b> orqali yuklab olindi"
+                )
+                await status_msg.delete()
+            else:
+                await status_msg.edit_text("❌ Musiqani yuklab olishda muammo yuz berdi.")
+        except Exception as e:
+            logger.exception(f"YouTube link yuklashda xatolik: {e}")
+            await status_msg.edit_text("❌ Musiqani yuklab olishda xatolik yuz berdi. Boshqa havola yuborib ko'ring.")
+        finally:
+            if file_path and os.path.exists(file_path):
                 try:
-                    os.remove(track['file_path'])
+                    os.remove(file_path)
                 except Exception:
                     pass
-        except Exception as e:
-            logger.error(f"Yuklashda xatolik: {e}")
-            await status_msg.edit_text("❌ Musiqani yuklab olishda xatolik yuz berdi. Boshqa havola yuborib ko'ring.")
         return
 
     # 2. Qo'shiq nomi bo'yicha qidiruv
@@ -102,40 +110,46 @@ async def handle_music_query(message: types.Message):
         await status_msg.edit_text(text, reply_markup=kb)
 
     except Exception as e:
-        logger.error(f"Qidiruvda xatolik: {e}")
+        logger.exception(f"Qidiruvda xatolik: {e}")
         await status_msg.edit_text("❌ Qidiruvda xatolik yuz berdi. Qayta urinib ko'ring.")
 
 @dp.callback_query(F.data.startswith("dl:"))
 async def handle_download_callback(callback: CallbackQuery):
     video_id = callback.data.split(":")[1]
-    await callback.answer("⏳ Qo'shiq yuklanmoqda...")
+    await callback.answer("⏳ Qo'shiq yuklanmoqda, kuting...")
     
     status_msg = await callback.message.reply("⏳ <b>Musiqa tayyorlanmoqda va yuklanmoqda...</b>")
+    file_path = None
     try:
         track = await music_service.async_download_audio(video_id)
-        audio_file = FSInputFile(track['file_path'])
-        
-        await callback.message.answer_audio(
-            audio=audio_file,
-            title=track['title'],
-            performer=track['uploader'],
-            duration=track['duration'],
-            caption="🎶 <b>@cheater_000bot</b> orqali yuklab olindi"
-        )
-        await status_msg.delete()
+        file_path = track.get('file_path')
 
-        # Faylni diskdan tozalash
-        if os.path.exists(track['file_path']):
+        if file_path and os.path.exists(file_path):
+            await status_msg.edit_text("📤 <b>Telegramga yuborilmoqda...</b>")
+            audio_file = FSInputFile(file_path)
+            
+            await callback.message.answer_audio(
+                audio=audio_file,
+                title=track.get('title', 'Musiqa'),
+                performer=track.get('uploader', "Noma'lum ijrochi"),
+                duration=track.get('duration', 0),
+                caption="🎶 <b>@cheater_000bot</b> orqali yuklab olindi"
+            )
+            await status_msg.delete()
+        else:
+            await status_msg.edit_text("❌ Fayl topilmadi. Qayta urinib ko'ring.")
+    except Exception as e:
+        logger.exception(f"Callback yuklashda xatolik: {e}")
+        await status_msg.edit_text("❌ Musiqani yuklab olishda xatolik yuz berdi. Iltimos, boshqa qatorni tanlab ko'ring.")
+    finally:
+        if file_path and os.path.exists(file_path):
             try:
-                os.remove(track['file_path'])
+                os.remove(file_path)
             except Exception:
                 pass
-    except Exception as e:
-        logger.error(f"Callback yuklashda xatolik: {e}")
-        await status_msg.edit_text("❌ Musiqani yuklab olishda xatolik yuz berdi. Iltimos, boshqa qatorni tanlab ko'ring.")
 
 async def start_web_server():
-    """Render bepul tarifida Port ochish va sog'lomlik tekshiruvi (Health Check) uchun"""
+    """Render uchun Health Check web server"""
     from aiohttp import web
     
     async def handle_ping(request):
@@ -150,16 +164,13 @@ async def start_web_server():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    logger.info(f"Render uchun Web server {port}-portda ishga tushdi.")
+    logger.info(f"Render Web server {port}-portda ishga tushdi.")
 
 async def main():
     logger.info("Bot ishga tushmoqda...")
-    
-    # Agar Render yoki boshqa bulutli serverda PORT o'zgaruvchisi berilgan bo'lsa
     if os.environ.get("PORT"):
         await start_web_server()
 
-    # Eski update'larni tozalaymiz
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 

@@ -1,8 +1,9 @@
 FROM python:3.12-slim
 
-# Tizim paketlari va ffmpeg o'rnatish
+# Tizim paketlari, ffmpeg va nodejs o'rnatish
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    nodejs \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

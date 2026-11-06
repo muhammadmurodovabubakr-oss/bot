@@ -42,13 +42,18 @@ def format_duration(seconds):
 def search_music(query: str, limit: int = 5):
     """
     Qo'shiq nomi bo'yicha qidiradi va ro'yxat qaytaradi.
-    Hech qanday tashqi API kalit talab qilinmaydi.
+    Render va boshqa serverlarda bloklanmaslik uchun android/ios klientidan foydalanadi.
     """
     ydl_opts = {
         'extract_flat': True,
         'noplaylist': True,
         'quiet': True,
         'no_warnings': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios']
+            }
+        }
     }
     
     results = []
@@ -76,13 +81,29 @@ def search_music(query: str, limit: int = 5):
 def download_audio(video_id: str):
     """
     Video ID bo'yicha musiqani yuklab olib MP3 formatiga o'tkazadi.
+    Datacenter IP lar bloklanishini oldini oluvchi android/ios klientlari ulangan.
     """
     target_mp3 = os.path.join(DOWNLOADS_DIR, f"{video_id}.mp3")
     out_template = os.path.join(DOWNLOADS_DIR, f"{video_id}.%(ext)s")
 
+    # Agar allaqachon yuklangan bo'lsa qaytaramiz
+    if os.path.exists(target_mp3) and os.path.getsize(target_mp3) > 1000:
+        return {
+            'file_path': target_mp3,
+            'title': 'Musiqa',
+            'uploader': 'Ijrochi',
+            'duration': 0
+        }
+
     ydl_opts = {
-        'format': 'bestaudio/best',
+        'format': 'bestaudio[ext=m4a]/bestaudio/best',
         'ffmpeg_location': FFMPEG_PATH,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios'],
+                'player_skip': ['webpage', 'configs']
+            }
+        },
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -94,14 +115,38 @@ def download_audio(video_id: str):
         'no_warnings': True,
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
-        return {
-            'file_path': target_mp3,
-            'title': info.get('title', 'Musiqa'),
-            'uploader': info.get('uploader', "Noma'lum"),
-            'duration': info.get('duration', 0)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
+            return {
+                'file_path': target_mp3,
+                'title': info.get('title', 'Musiqa'),
+                'uploader': info.get('uploader', "Noma'lum ijrochi"),
+                'duration': info.get('duration', 0)
+            }
+    except Exception as e:
+        # Fallback: agar android klientida xatolik bersa, umumiy usulda urinib ko'ramiz
+        ydl_opts_fallback = {
+            'format': 'bestaudio/best',
+            'ffmpeg_location': FFMPEG_PATH,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'outtmpl': out_template,
+            'noplaylist': True,
+            'quiet': True,
+            'no_warnings': True,
         }
+        with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl:
+            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
+            return {
+                'file_path': target_mp3,
+                'title': info.get('title', 'Musiqa'),
+                'uploader': info.get('uploader', "Noma'lum ijrochi"),
+                'duration': info.get('duration', 0)
+            }
 
 async def async_search_music(query: str, limit: int = 5):
     return await asyncio.to_thread(search_music, query, limit)
